@@ -1,0 +1,889 @@
+-- Creating the filegroup for Customer and Business
+ALTER DATABASE [PurchaseProcessing] ADD FILEGROUP [DEFAULT_DATA]
+GO
+
+IF NOT EXISTS (SELECT name FROM sys.filegroups WHERE is_default=1 AND name = N'DEFAULT_DATA') ALTER DATABASE [PurchaseProcessing] MODIFY FILEGROUP [DEFAULT_DATA] DEFAULT
+GO
+
+ALTER DATABASE [PurchaseProcessing] ADD FILE ( NAME = N'PurchaseProcessing1', FILENAME = N'D:\SQLSYSDB\PurchaseProcessing1.ndf' , 
+SIZE = 8192KB , FILEGROWTH = 65536KB ) TO FILEGROUP [DEFAULT_DATA]
+GO
+
+-- Creating the filegroup for transactions
+alter database PersonalInformation add filegroup FG_Transactions;
+go
+
+-- Table1 about Customer Info   ----------------------------------------------------------------------------------------------------------------
+CREATE TABLE DICT.CustomerInfo
+(
+CustomerId     int constraint PK_CustomerId Primary Key Clustered Identity(1,1),
+CustomerInfoAddress INT NOT NULL,
+LastName       nvarchar(100) Not Null,
+FirstName      nvarchar(100) Not Null,
+MiddleName     nvarchar(100) constraint DF_MiddleName Default 'none'null,
+IIN            char (12) constraint UQ_IIN Unique Not Null,
+Gender         char(1) constraint CK_Sex Check (Gender = 'M' or Gender = 'F') Default 'neutral' Null,          
+BirthDate      date Not Null,
+CustomerInfoNumbers INT NOT NULL,                                           
+CustomerInfoEMails INT NOT NULL,
+IsActive       bit,
+IsNotActve     bit,
+CreatedTime    datetime2 (7) constraint DF_LastUpdate Default (sysdatetime()),
+);
+
+
+--3 Normal Form for Table1.Customer Info----------------------------------------------------------------------------------------------------------------
+CREATE TABLE DICT.CustomerInfoEMails
+(
+	Id INT NOT NULL,
+	CustomerInfoPersonalEMailId INT NOT NULL CONSTRAINT FK_CustomerInfoPersonalEMailId Foreign Key (CustomerInfoPersonalEMailId) references DICT.CustomerInfoPersonalEMail(CustomerInfoPersonalEMailId),
+	CustomerInfoWorkEMailId     INT NOT NULL CONSTRAINT FK_CustomerInfoWorkEMailId Foreign Key (CustomerInfoWorkEMailId) references DICT.CustomerInfoWorkEMail(CustomerInfoWorkEMailId)
+); 
+
+
+CREATE TABLE DICT.CustomerInfoPersonalEMail
+(
+	CustomerInfoPersonalEMailId INT NOT NULL CONSTRAINT PK_CustomerInfoPersonalEMailId Primary Key,
+	PersonalEMail               varchar(100) NOT NULL
+);
+
+CREATE TABLE DICT.CustomerInfoWorkEMail
+(
+	CustomerInfoWorkEMailId INT NOT NULL CONSTRAINT PK_CustomerInfoWorkEMailId Primary Key,
+	WorkEMail               varchar(100)  NULL
+);
+
+--Just practice INSERTING
+SELECT CI.*,PE.PersonalEMail,We.WorkEMail  FROM DICT.CustomerInfoEMails AS IE
+LEFT JOIN [DICT].[CustomerInfo] AS CI ON IE.Id=CI.CustomerInfoEMails
+LEFT JOIN DICT.CustomerInfoPersonalEMail as PE ON IE.[CustomerInfoPersonalEMailId] = PE.CustomerInfoPersonalEMailId
+LEFT JOIN DICT.CustomerInfoWorkEMail as WE ON IE.[CustomerInfoWorkEMailId] = WE.CustomerInfoWorkEMailId
+
+--Inserting to the Tables with Email
+INSERT INTO DICT.CustomerInfoPersonalEMail (CustomerInfoPersonalEMailId, PersonalEMail)
+VALUES (1, 'zhasPersonal@gmail.com'),
+(2,'Renat228Personal@gmail.com') ;
+
+-- DROP TABLE DICT.CustomerInfoWorkNumber;
+CREATE TABLE DICT.CustomerInfoNumbers
+(
+	Id                           INT NOT NULL,
+	CustomerInfoPersonalNumberId INT NOT NULL CONSTRAINT FK_CustomerPersonalNumberId Foreign Key (CustomerInfoPersonalNumberId) references DICT.CustomerInfoPersonalNumber(CustomerInfoPersonalNumberId),
+	CustomerInfoWorkNumberId     INT NOT NULL CONSTRAINT FK_CustomerInfoWorkNumberId Foreign Key (CustomerInfoWorkNumberId) references DICT.CustomerInfoWorkNumber(CustomerInfoWorkNumberId)
+);
+
+CREATE TABLE DICT.CustomerInfoPersonalNumber
+(
+	CustomerInfoPersonalNumberId INT NOT NULL CONSTRAINT PK_CustomerInfoPersonalNumberId Primary Key,
+	PersonalNumber               CHAR (10) NOT NULL
+);
+
+CREATE TABLE DICT.CustomerInfoWorkNumber
+(
+	CustomerInfoWorkNumberId INT NOT NULL CONSTRAINT PK_CustomerInfoWorkNumber Primary Key,
+	WorkNumber               CHAR (10) NULL
+);
+
+DROP TABLE DICT.CustomerInfoPersonalNumber;
+
+SELECT * FROM  DICT.CustomerInfo;
+
+CREATE TABLE DICT.CustomerInfoAddress 
+	(
+	Id                 INT NOT NULL CONSTRAINT PK_CustomerInfoAddressId Primary Key,
+	CustomerAddressId  INT NOT NULL CONSTRAINT FK_CustomerAddressId Foreign Key (CustomerAddressId) references DICT.CustomerInfo(CustomerId),
+	CountryId          INT NOT NULL CONSTRAINT FK_CustomerCountryId Foreign Key (CountryId) references DICT.CustomerInfoCountry(Id),
+	RegonId            INT NOT NULL CONSTRAINT FK_CustomerRegonId Foreign Key (RegonId) references DICT.CustomerInfoRegion(Id),
+	DistrictId         INT NOT NULL CONSTRAINT FK_CustomerDistrictId Foreign Key (DistrictId) references DICT.CustomerInfoDistrict(Id),
+	Locality           NVARCHAR (50) NOT NULL,
+	Adress             NVARCHAR (50) NOT NULL
+	);
+
+DROP Table dict.CustomerInfoAddress;
+
+CREATE TABLE DICT.CustomerInfoCountry 
+	(
+	Id          INT CONSTRAINT PK_IdCountry Primary Key,
+	NameCountry NVARCHAR(25) NOT NULL
+	);
+
+CREATE TABLE DICT.CustomerInfoRegion 
+	(
+	Id         INT CONSTRAINT PK_IdRegion Primary Key,
+	NameRegion NVARCHAR(25) NOT NULL
+	);
+
+CREATE TABLE DICT.CustomerInfoDistrict 
+	(
+	Id         INT CONSTRAINT PK_IdDistrict Primary Key,
+	NameDistrict NVARCHAR(25) NOT NULL
+	);
+
+-- For correct // DROP TABLE DICT.CustomerInfo; 
+
+--CREATING PROCEDURES ----------------------------------------------------------------------------------------------------------------
+
+--Procedure for SELECT
+create procedure DICT.CustomerInfo_Select
+as
+begin
+set nocount on;
+select*from DICT.CustomerInfo
+end
+go
+
+--Execution process
+EXEC DICT.CustomerInfo_Select;
+
+DROP PROC DICT.CustomerInfo_Insert;
+--Procedure for INSERT 
+create procedure DICT.CustomerInfo_Insert
+	@CustomerId int,
+	@LastName nvarchar(100),
+	@FirstName nvarchar(100),
+	@MiddleName nvarchar(100),
+	@IIN char (12),
+	@Gender char(1),
+	@BirthDate date,
+	@IsActive bit,
+	@IsNotActve bit
+AS
+SET XACT_ABORT, NOCOUNT ON;
+SET IDENTITY_INSERT DICT.CustomerInfo ON;
+	INSERT INTO DICT.CustomerInfo 
+		(
+		CustomerId,	
+		LastName,
+		FirstName,
+		MiddleName,
+		IIN,
+		Gender,
+		BirthDate,
+		IsActive,
+		IsNotActve
+		)
+	VALUES 
+		(
+		@CustomerId,
+		@LastName,
+		@FirstName,
+		@MiddleName,
+		@IIN,
+		UPPER(@Gender),
+		@BirthDate,
+		@IsActive,
+		@IsNotActve 
+		);
+SET IDENTITY_INSERT DICT.CustomerInfo OFF;
+GO
+
+--DROP PROC DICT.CustomerInfo_Insert
+
+--Execution process
+EXEC DICT.CustomerInfo_Insert
+		@CustomerId = 3,
+		@LastName = 'Sakeltiev',
+		@FirstName = 'Mergen',
+		@MiddleName = 'BatrUly',
+		@IIN = '0002015000259',
+		@Gender = 'm',
+		@BirthDate = '11/01/2000',
+		@IsActive = '1',
+		@IsNotActve = '0'
+GO
+
+--SELECT * FROM DICT.CustomerInfo
+
+--Procedure for UPDATE
+DROP PROC DICT.CustomerInfo_Update;
+create procedure DICT.CustomerInfo_Update
+	@CustomerId int,
+	@IsActive bit,
+	@IsNotActve bit
+AS
+UPDATE DICT.CustomerInfo
+SET 	
+		IsActive = @IsActive,
+		IsNotActve = @IsNotActve 
+WHERE CustomerId = @CustomerId
+GO
+
+--Execution process
+EXEC DICT.CustomerInfo_Update
+@CustomerId = 7,	
+@IsActive = '0',
+@IsNotActve = '1'
+GO
+
+--Procedure for DELETE 
+create procedure DICT.CustomerInfo_Delete
+	@CustomerId INT
+AS
+	DELETE DICT.CustomerInfo
+	WHERE CustomerId = @CustomerId
+GO
+
+--Execution process
+EXEC DICT.CustomerInfo_Delete
+	@CustomerId = 2
+GO
+
+-- For correct // DROP PROC DICT.CustomerInfo_****
+
+--Table 2.  Customer Account ----------------------------------------------------------------------------------------------------------------
+CREATE TABLE DICT.CustomerAccount
+(	
+	CustomerAccountId int constraint PK_Customer_Account_Id Primary Key Clustered Identity(1,1),
+	CustomerId INT NOT NULL CONSTRAINT FK_Customer_ID FOREIGN KEY(CustomerId) REFERENCES DICT.CustomerInfo (CustomerId),
+	CustomerAccountBank INT NOT NULL,
+	Currency1  CHAR(3) NOT NULL,      
+	Currency2  CHAR(3) NULL,  
+	IBAN1  CHAR(20) constraint UQ_IBAN1 Unique Not Null,
+	IBAN2  CHAR(20) constraint UQ_IBAN2 Unique Null,
+	IsActive bit,
+	IsNotActve bit,
+	CreatedTime datetime2 (7) constraint DF_Last_Creating_Update Default (sysdatetime()),
+);
+
+DROP TABLE DICT.CustomerAccount;
+	
+-- 3Nnormal Form 
+/**This Table CustomerAccountBank is connecting with a BusinessAccount and a Customer Account because they have the same Banks**/
+CREATE TABLE DICT.CustomerAccountBank
+(
+	Id INT NOT NULL  CONSTRAINT PK_CustomerAccountBankId  Primary Key,
+	CustomerAccountBankId INT NOT NULL CONSTRAINT FK_CustomerAccountBankId Foreign Key (CustomerAccountBankId) references DICT.CustomerAccount(CustomerAccountId),
+	BankName VARCHAR (50) NOT NULL,
+	RCBIC VARCHAR (12) NOT NULL
+);
+
+/**I forgot to connect **/
+
+--DROP TABLE DICT.CustomerAccount;
+
+/**Test Foreign Key**/
+--SELECT CI.LastName, CI.FirstName, CI.MiddleName, CI.IIN, CA.* 
+--FROM DICT.CustomerInfo AS CI
+--INNER JOIN DICT.CustomerAccount AS CA ON (CA.CustomerID = CI.CustomerId) 
+
+--SELECT * FROM DICT.CustomerInfo
+
+
+INSERT INTO DICT.CustomerAccount (
+	Currency1,
+	Currency2,
+	IBAN1,
+	IBAN2,
+	IsActive,
+	IsNotActve
+) VALUES ('KZT','USD', 'KZ76722C000032949495','0', '1', '0');
+
+--Procedure for SELECT
+create procedure DICT.CustomerAccount_Select
+as
+begin
+SET XACT_ABORT, NOCOUNT ON;
+select*from DICT.CustomerAccount
+end
+go
+
+--Execution SELECT process
+EXEC DICT.CustomerAccount_Select;
+
+--Procedure for INSERT 
+--DROP PROC DICT.CustomerAccount_Insert;
+create procedure DICT.CustomerAccount_Insert
+	@CustomerAccountID int,
+	@CustomerID INT,
+	@Currency1 CHAR(3),
+	@Currency2 CHAR(3),
+	@IBAN1 CHAR(20),
+	@IBAN2 CHAR(20),
+	@IsActive bit,
+	@IsNotActve bit
+AS
+SET XACT_ABORT, NOCOUNT ON;
+SET IDENTITY_INSERT PurchaseProcessing.DICT.CustomerAccount ON;
+	INSERT INTO DICT.CustomerAccount 
+		(
+		Currency1,
+		Currency2,
+		IBAN1,
+		IBAN2,
+		IsActive,
+		IsNotActve
+		)
+	VALUES 
+		(
+		@Currency1,
+		@Currency2,
+		@IBAN1,
+		@IBAN2,
+		@IsActive,
+		@IsNotActve 
+		);
+SET IDENTITY_INSERT PurchaseProcessing.DICT.CustomerAccount OFF;
+GO
+
+--Execution INSERT process
+EXEC DICT.CustomerAccount_Insert
+		@CustomerAccountId = 2,
+		@CustomerID = 2,
+		@Currency1 = 'KZT',
+		@Currency2 = 'KZT',
+		@IBAN1 = 'RF76722A150032944495',
+		@IBAN2 = 'KZ00715F150022554790',
+		@BankName1 = 'SberBank',
+		@BankName2 = 'RBK',
+		@RCBIC1 = '226940099113',
+		@RCBIC2 = '09620340463',
+		@IsActive = '1',
+		@IsNotActve = '0' 
+GO
+
+-- Creating UPDATE procedure 
+--DROP PROC DICT.CustomerAccount_Update;
+create procedure DICT.CustomerAccount_Update
+	@CustomerAccountID int,
+	@Currency1 CHAR(3),
+	@IBAN1 CHAR(20),
+	@IsActive bit,
+	@IsNotActve bit
+AS
+UPDATE DICT.CustomerAccount
+SET 	
+		Currency1 = @Currency1,
+		IBAN1 = @IBAN1,
+		IsActive = @IsActive,
+		IsNotActve = @IsNotActve 
+WHERE CustomerAccountId = @CustomerAccountId
+GO
+
+--DROP PROC DICT.CustomerAccount_Update;
+
+--Execution UPDATE process
+EXEC DICT.CustomerAccount_Update
+@CustomerAccountId = 3,
+@Currency1 = 'JPN',
+@IBAN1 = 'JAPON22A150032944495',	
+@IsActive = '0',
+@IsNotActve = '1'
+GO
+
+--Procedure for DELETE 
+create procedure DICT.CustomerAccount_Delete
+	@CustomerAccountId INT
+AS
+	DELETE DICT.CustomerAccount
+	WHERE CustomerAccountId = @CustomerAccountId
+GO
+
+--Execution DELETE process
+EXEC DICT.CustomerAccount_Delete
+	@CustomerAccountId = 3
+GO
+
+-- Table 3. Business Info ----------------------------------------------------------------------------------------------------------------
+CREATE TABLE DICT.BusinessInfo
+(	
+	BusinessID         INT CONSTRAINT PK_Business_ID PRIMARY KEY CLUSTERED Identity (1,1),                   -- Name of business / PK 
+	BusinessName       NVARCHAR (100) constraint UQ_Business_Name Unique Not Null, 
+	BIN                CHAR (12) constraint UQ_BIN Unique Not Null,                                                 -- Identity of business / UniqueKey
+	BusinessInfoType   INT NOT NULL,                                                           -- data about business legal person or Indiv Enterpreneur
+	BusinessInfoCurrentAddress INT NOT NULL, 
+	BusinessInfoLegalAddress INT NOT NULL, 
+	Email              VARCHAR  (100) constraint DF__Business_Email1 Unique Not Null,                                               
+	IsActive           BIT,
+	IsNotActve         BIT,
+	CreatedTime        DATETIME2 (7) constraint DF_Business_Last_Creating_Update Default (sysdatetime()),
+);
+GO
+
+-- 3NF -----------------------------------------------------------------------------------------------------------------------------------------
+CREATE TABLE BusinessInfoType
+(	
+	BusinessInfoTypeId INT NOT NULL CONSTRAINT FK_BusinessInfoTypeId  Foreign Key (BusinessInfoTypeId) references DICT.BusinessInfo(BusinessID),
+	BusinessInfoName NVARCHAR (50) NOT NULL,
+);
+
+CREATE TABLE DICT.BusinessInfoLegalAddress 
+	(
+	Id     INT NOT NULL CONSTRAINT PK_BusinessInfoAddressId Primary Key,
+	BusinessInfoLegalAddressId  INT NOT NULL CONSTRAINT FK_BusinessInfoLegalAddressId Foreign Key (BusinessInfoLegalAddressId) references DICT.BusinessInfo(BusinessID),
+	CountryId          INT NOT NULL CONSTRAINT FK_BusinessCustomerCountryId Foreign Key (CountryId) references DICT.CustomerInfoCountry(Id),
+	RegonId            INT NOT NULL CONSTRAINT FK_BusinessCustomerRegonId Foreign Key (RegonId) references DICT.CustomerInfoRegion(Id),
+	DistrictId         INT NOT NULL CONSTRAINT FK_CBusinessCustomerDistrictId Foreign Key (DistrictId) references DICT.CustomerInfoDistrict(Id),
+	Locality           NVARCHAR (50) NOT NULL,
+	Adress             NVARCHAR (50) NOT NULL
+	);
+
+CREATE TABLE DICT.BusinessInfoCurrentAddress 
+	(
+	Id     INT NOT NULL CONSTRAINT PK_BusinessInfoCurrentAddressId Primary Key,
+	BusinessInfoCurrentAddressId  INT NOT NULL CONSTRAINT FK_BusinessInfoCurrentAddressId Foreign Key (BusinessInfoCurrentAddressId) references DICT.BusinessInfo(BusinessID),
+	CountryId          INT NOT NULL CONSTRAINT FK_BusinessCustomerCurrentCountryId Foreign Key (CountryId) references DICT.CustomerInfoCountry(Id),
+	RegonId            INT NOT NULL CONSTRAINT FK_BusinessCustomerCurrentRegonId Foreign Key (RegonId) references DICT.CustomerInfoRegion(Id),
+	DistrictId         INT NOT NULL CONSTRAINT FK_CBusinessCustomerCurrentDistrictId Foreign Key (DistrictId) references DICT.CustomerInfoDistrict(Id),
+	Locality           NVARCHAR (50) NOT NULL,
+	Adress             NVARCHAR (50) NOT NULL
+	);
+
+
+--DROP TABLE DICT.BusinessInfo;
+SELECT * FROM DICT.BusinessInfo;
+
+--CREATING PROCEDURES --------------------------------------------------------------------------------------------------------------------------------------------------
+--Procedure for SELECT
+create procedure DICT.BusinessInfo_Select
+as
+begin
+SET XACT_ABORT, NOCOUNT ON;
+select*from DICT.BusinessInfo
+end
+go
+
+--Execution SELECT process
+EXEC DICT.BusinessInfo_Select;
+
+--Procedure for INSERT 
+-- DROP PROC DICT.BusinessInfo_Insert;
+create procedure DICT.BusinessInfo_Insert
+		@BusinessID         INT,    
+		@BusinessName NVARCHAR (100),
+		@BIN                CHAR     (12),                                                  
+		@Email             VARCHAR  (100),                                           
+		@IsActive           BIT,      
+		@IsNotActve         BIT
+AS
+SET XACT_ABORT, NOCOUNT ON;
+SET IDENTITY_INSERT PurchaseProcessing.DICT.BusinessInfo ON;
+	INSERT INTO DICT.BusinessInfo 
+		(   
+		BusinessName,
+		BIN,                                                 
+		Email,                                              
+		IsActive,
+		IsNotActve
+		)
+	VALUES 
+		(
+		@BusinessName,
+		@BIN,                                                   
+		@Email,                                      
+		@IsActive,
+		@IsNotActve 
+		);
+SET IDENTITY_INSERT PurchaseProcessing.DICT.BusinessInfo OFF;
+GO
+
+--Execution INSERT process
+
+EXEC DICT.BusinessInfo_Insert
+		@BusinessID = 2,
+		@BusinessName = 'Kaspi',
+		@BIN = '021249901322',                                                 
+		@BusinessType = '1',  
+		@Adress = '2',       
+		@Email = 'asda',                                      
+		@IsActive = '1',
+		@IsNotActve = '0' 
+GO
+
+-- Creating UPDATE procedure 
+create procedure DICT.BusinessInfo_Update
+	@BusinessID int,
+	@BusinessName nvarchar (100),
+	@IsActive bit,
+	@IsNotActve bit
+AS
+UPDATE DICT.BusinessInfo
+SET 	
+		BusinessID = @BusinessID,
+		BusinessName = @BusinessName,
+		IsActive = @IsActive,
+		IsNotActve = @IsNotActve 
+WHERE BusinessID = @BusinessID
+GO
+
+--DROP PROC DICT.CustomerAccount_Update;
+
+
+--Procedure for DELETE 
+create procedure DICT.BusinessInfo_Delete
+	@BusinessID INT
+AS
+	DELETE DICT.BusinessInfo
+	WHERE BusinessID = @BusinessID
+GO
+
+
+--Table 4.BusinessAccount -----------------------------------------------------------------------------------------------------
+
+CREATE TABLE DICT.BusinessAccount
+(
+	BusinessAccountId int constraint PK_Business_Account_Id Primary Key Clustered Identity(1,1),
+	BusinessId INT NOT NULL CONSTRAINT FK_Business_ID FOREIGN KEY(BusinessId) REFERENCES DICT.BusinessInfo (BusinessId),
+	BusinessAcountBank INT NOT NULL CONSTRAINT FK_Business_Acount_Bank FOREIGN KEY(BusinessAcountBank) REFERENCES DICT.CustomerAccountBank(Id),
+	CurrencyName INT NOT NULL,
+	IBAN1  CHAR(20) constraint UQ_BusinessIBAN1 Unique Not Null,
+	IBAN2  CHAR(20) constraint UQ_usinessIBAN2 Unique Null,
+	CreatedTime datetime2 (7) constraint DF_Business_Account_Last_Creating_Update Default (sysdatetime())
+);
+
+--DROP TABLE DICT.BusinessAccount;
+-- 3NF
+CREATE TABLE DICT.Currency
+(
+	CurrencyId INT NOT NULL CONSTRAINT PK_Currency_id PRIMARY KEY CLUSTERED,
+	CurrencyName CHAR(3) NOT NULL CONSTRAINT FK_Currency_Name FOREIGN KEY(CurrencyId) REFERENCES DICT.BusinessAccount(BusinessAccountId)
+);
+
+SELECT * FROM DICT.Currency;
+
+--CREATING PROCEDURES ----------------------------------------------------------------------------------------------------------------------------
+--Procedure for SELECT
+CREATE PROC DICT.BusinessAccount_Select
+as
+begin
+SET XACT_ABORT, NOCOUNT ON;
+select*from DICT.BusinessAccount
+end
+go
+
+--Procedure for INSERT 
+-- DROP PROC DICT.BusinessInfo_Insert;
+create procedure DICT.BusinessAccount_Insert
+		@BusinessAccountId     INT,    
+		@IBAN1                 CHAR(20),
+		@IBAN2                 CHAR(20),                                                                                           
+		@IsActive              BIT,      
+		@IsNotActve            BIT
+AS
+SET XACT_ABORT, NOCOUNT ON;
+SET IDENTITY_INSERT PurchaseProcessing.DICT.BusinessAccount ON;
+	INSERT INTO DICT.BusinessAccount 
+		(   
+		IBAN1,
+		IBAN2                                                                                              
+		)
+	VALUES 
+		(
+		@IBAN1,                                                   
+		@IBAN2                                      
+		);
+SET IDENTITY_INSERT PurchaseProcessing.DICT.BusinessAccount OFF;
+GO
+-- Creating UPDATE procedure 
+
+create procedure DICT.BusinessAccount_Update
+	@BusinessAccountId int,
+	@IBAN1                 CHAR(20)
+AS
+UPDATE DICT.BusinessAccount 
+SET 
+		IBAN1 = @IBAN1                
+WHERE   BusinessAccountId = @BusinessAccountId
+GO
+
+--Procedure for DELETE 
+create procedure DICT.BusinessAccount_Delete
+	@BusinessAccountId INT
+AS
+	DELETE DICT.BusinessAccount 
+	WHERE BusinessAccountId = @BusinessAccountId
+GO
+
+-- Table 5. TransactionInfo
+CREATE TABLE [TRAN].[TransactionInfo]
+(
+	TransactionId int constraint PK_Business_Account_Id Primary Key Clustered Identity(1,1),
+	Date DATETIME NOT NULL,
+	TransactionNumber VARCHAR (50) NOT NULL constraint UQ_Transaction_number Unique,
+	CustomerIdentity VARCHAR (50)  NOT NULL,
+	CustomerIdentityAccount VARCHAR (50)  NOT NULL,
+	CurrennyName INT NOT NULL CONSTRAINT FK_Currency_Name_Customer FOREIGN KEY(TransactionId) REFERENCES DICT.Currency(CurrencyId),
+	CurrencyCourse VARCHAR (5)  NOT NULL,
+	CurrencyCommission VARCHAR (10)  NOT NULL,
+	TransactionStatus INT NOT NULL CONSTRAINT FK_Transaction_Status FOREIGN KEY(TransactionId) REFERENCES [TRAN].[TransactionStatus](TransactionStatusId),
+	BusinessIdentity VARCHAR (50)  NOT NULL,
+	BusinessIdentityAccount VARCHAR (50)  NOT NULL,
+	BusinessSum INT NOT NULL,
+	BusinessCurrencyCourse VARCHAR (10)  NOT NULL CONSTRAINT FK_Currency_Course_Business FOREIGN KEY(TransactionId) REFERENCES DICT.Currency(CurrencyId),    
+	CreatedTime datetime2 (7) constraint DF_Business_Account_Last_Creating_Update Default (sysdatetime())
+)
+ON [FG_Transactions];
+DROP TABLE [TRAN].[TransactionInfo];
+DROP TABLE [TRAN].[TransactionStatus];
+--3NF --------------------------------------------------------------------------------------------------------------------------------------------
+	
+CREATE TABLE [TRAN].[TransactionStatus]
+(
+	TransactionStatusId        INT NOT NULL PRIMARY KEY CLUSTERED Identity (1,1),
+	TransactionStatusType      VARCHAR (15)NULL,
+	TransactionErrorNumber     CHAR (3) NULL,
+	TransactionErorDescription NVARCHAR (25) NOT NULL
+)
+ON [FG_Transactions];
+
+INSERT INTO [TRAN].[TransactionStatus] (TransactionStatusType, TransactionErrorNumber,TransactionErorDescription)
+VALUES ('v obrabotke', '', ''),
+('uspeh', '', ''),
+('error', '900', 'ne hvatilo resources'), 
+('error', '901', 'lock'),
+('error', '902', 'parenter account is lock'),
+('error', '902', 'other problems');
+
+SELECT * FROM [TRAN].[TransactionStatus];
+--CREATING PROCEDURES ----------------------------------------------------------------------------------------------------------------------------
+--Procedure for SELECT
+CREATE PROC [TRAN].[TransactionInfo_Select]
+as
+begin
+SET XACT_ABORT, NOCOUNT ON;
+select*
+from [TRAN].[TransactionInfo] as TI
+INNER JOIN [TRAN].[TransactionStatus] as TS ON TI.TransactionStatus = TS.TransactionStatusId
+end;
+go
+
+--DROP PROC [TRAN].[TransactionInfo_Select]
+--Exectuion SELECT process
+EXEC [TRAN].[TransactionInfo_Select];
+ 
+-- DROP PROC DICT.BusinessInfo_Insert;
+create procedure [TRAN].[TransactionInfo_Insert]
+		@TransactionId         INT,    
+		@Date                  DATETIME,
+		@TransactionNumber     VARCHAR (50),                                                                                           
+		@CurrencyCourse        VARCHAR (5),
+		@CurrencyCommission    VARCHAR (10),
+		@BusinessSum           INT,
+		@BusinessCurrencyCourse VARCHAR (50)
+AS
+SET XACT_ABORT, NOCOUNT ON;
+	INSERT INTO [TRAN].[TransactionInfo_Insert] 
+		(   
+		[Date],
+		TransactionNumber,
+		CurrencyCourse,
+		CurrencyCommission,
+		BusinessSum,
+		BusinessCurrencyCourse
+		)
+	VALUES 
+		(
+		@Date,
+		@TransactionNumber,
+		@CurrencyCourse,
+		@CurrencyCommission,
+		@BusinessSum,
+		@BusinessCurrencyCourse                                     
+		);
+GO
+
+DROP PROC [TRAN].[TransactionInfo_Insert]
+--Inserting through procedures
+--Execution process
+SET IDENTITY_INSERT [TRAN].[TransactionInfo_Insert] ON;
+EXEC [TRAN].[TransactionInfo_Insert]
+	@TransactionId = 1,
+	@Date = '2022-08-22',
+	@TransactionNumber ='5886554',
+	@CurrencyCourse ='021',
+	@CurrencyCommission = '05',
+	@BusinessSum = '5555555',
+	@BusinessCurrencyCourse = '25'
+GO
+SET IDENTITY_INSERT [TRAN].[TransactionInfo_Insert] OFF;
+
+-- Creating UPDATE procedure 
+
+create procedure [TRAN].[TransactionInfo_Update]
+	@TransactionId          int,
+	@TransactionNumber     VARCHAR (50),
+	@BusinessSum            INT
+AS
+UPDATE [TRAN].[TransactionInfo]
+SET 
+		TransactionNumber = @TransactionNumber                
+WHERE   BusinessSum = @BusinessSum
+GO
+
+--Procedure for DELETE 
+create procedure [TRAN].[TransactionInfo_Delete]
+	@TransactionId INT
+AS
+	DELETE [TRAN].[TransactionInfo]
+	WHERE TransactionId = @TransactionId
+GO
+
+--Change filegroups -- Done
+SELECT * FROM sys.filegroups
+SELECT * FROM [TRAN].[TransactionInfo]
+
+--Creating Procedures for commands
+CREATE or ALTER PROC [TRAN].[CustomerSuccessSale]
+@StartDate DATE,
+@EndDate DATE
+
+AS 
+	BEGIN
+		SET NOCOUNT, XACT_ABORT ON;
+		SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+		SELECT TI.[Date]
+		FROM [TRAN].[TransactionInfo] AS TI
+		INNER JOIN [DICT].[CustomerInfo] as CI ON CI.CustomerId = TI.CustomerIdentity
+		INNER JOIN [TRAN].[TransactionStatus] as TS ON TI.TransactionId = TS.[TransactionStatusId]
+		WHERE TS.[TransactionStatusType] = 'uspeh' AND [Date] BETWEEN @StartDate AND @EndDate
+		ORDER BY TI.[Date]
+	END
+GO
+
+CREATE PROC [TRAN].[BusinessSuccessSale]
+@StartDate DATE,
+@EndDate DATE
+
+AS 
+	BEGIN
+		SET NOCOUNT, XACT_ABORT ON;
+		SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+		SELECT TI.[Date]
+		FROM [TRAN].[TransactionInfo] AS TI
+		INNER JOIN [DICT].[BusinessInfo] as BI ON BI.BusinessID = TI.BusinessIdentity
+		INNER JOIN [TRAN].[TransactionStatus] as TS ON TI.TransactionId = TS.[TransactionStatusId]
+		WHERE TS.[TransactionStatusType] = 'uspeh' AND [Date] BETWEEN @StartDate AND @EndDate
+		ORDER BY TI.[Date]
+	END
+GO
+
+
+
+SELECT * FROM 
+
+--Indexes
+--Logins
+CREATE TABLE dbo.Logins (
+	Id INT IDENTITY (1,1) NOT NULL PRIMARY KEY,
+	[Login] VARCHAR (50) NOT NULL UNIQUE,
+	PasswordHash VARBINARY (128) NULL,
+	UserEMail VARCHAR (50) NOT NULL,
+	IsEnable BIT NOT NULL,
+	UserMustChangePassDueNextLogon BIT NOT NULL DEFAULT (0)
+);
+
+--Procedure CREATE Login
+CREATE PROC dbo.Logins_AddNewUser
+	@Login VARCHAR (50),
+	@Pass NVARCHAR (128),
+	@UserEMail VARCHAR (50)
+AS 
+BEGIN 
+	SET NOCOUNT, XACT_ABORT ON;
+	SET TRANSACTION ISOLATION LEVEL READ
+
+UNCOMMITTED;
+
+	INSERT INTO dbo.Logins([Login], PasswordHash, UserEMail, IsEnable, UserMustChangePassDueNextLogon)
+	VALUES (@Login, HASHBYTES('SHA2_256', @Pass), @UserEmail, 1,1)
+
+END
+GO
+
+DECLARE	@return_value int
+
+EXEC	@return_value = [dbo].[Logins_AddNewUser]
+		@Login = N'Zhassik',
+		@Pass = N'Zhassik123',
+		@UserEMail = N'Zhassik123@mail.ru'
+
+SELECT	'Return Value' = @return_value
+
+GO
+
+SELECT * FROM dbo.Logins;
+
+grant execute on object:: dbo.Logins_AddNewUser to LoginAdmn
+grant execute on object:: dbo.Logins_AddNewUser to LoginAdmn
+
+CREATE USER LoginAdmin WITHOUT LOGIN;
+-- CReating procedures ---------------------------------
+
+CREATE OR ALTER PROCEDURE [dbo].[Logins_Update_Super_Manager_Password]
+	@Id   INT,
+	@Pass NVARCHAR (128),
+	@UserMustChangePassDueNextLogon BIT
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+UPDATE dbo.Logins
+SET PasswordHash = HASHBYTES('SHA2_256',@Pass),
+	UserMustChangePassDueNextLogon = 1
+WHERE Id = @Id
+END
+
+SELECT * FROM dbo.Logins
+-- Initially was 0x11334C8BC0394583B845120B113F686AD4F9FFFEEE00664967E0DF58A79C2A8E
+-- After update  0x1C15D78B0BCA3E086E0E7782D237F9154BFE99E30DDCDCC5DE677A5BAAE93104    / 1
+
+CREATE OR ALTER PROCEDURE [dbo].[Logins_Update_Application_User_Password]
+	@Id   INT,
+	@Pass NVARCHAR (128)
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+UPDATE dbo.Logins
+SET PasswordHash = HASHBYTES('SHA2_256',@Pass)
+WHERE Id = @Id
+END
+-- Initially was 0x7F6F75F3AB6E81C248BBE5C9C3C6335BF693A61B86E2EA1ACE4877315CA0EEB0
+-- After update 0x11334C8BC0394583B845120B113F686AD4F9FFFEEE00664967E0DF58A79C2A8E
+
+CREATE or ALTER PROCEDURE [dbo].[Logins_Update_Enable_Login]
+	@Id   INT,
+	@IsEnable BIT
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+UPDATE dbo.Logins
+SET @IsEnable = 1
+WHERE Id = @Id
+END
+
+CREATE PROCEDURE [dbo].[Logins_Update_Disable_Login]
+	@Id   INT,
+	@IsEnable BIT
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+UPDATE dbo.Logins
+SET @IsEnable = 0
+WHERE Id = @Id
+END
+
+CREATE PROCEDURE [dbo].[Logins_Select_GetLoginInfo_Login]
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+SELECT  [Login], UserEmail
+FROM dbo.Logins
+END
+--Execution
+EXEC [dbo].[Logins_Select_GetLoginInfo_Login]
+
+CREATE PROCEDURE [dbo].[Logins_Select_GetLoginInfoMasked_Login]
+AS
+BEGIN 
+SET NOCOUNT, XACT_ABORT ON;
+SET TRAN ISOLATION LEVEL READ UNCOMMITTED;
+SELECT  [Login], PasswordHash, UserEmail
+FROM dbo.Logins
+END
+
+--Execution
+EXEC [dbo].[Logins_Select_GetLoginInfoMasked_Login]
+SELECT * FROM dbo.Logins;
