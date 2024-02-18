@@ -1,0 +1,275 @@
+/* 1) Рассчитайте DAU сервиса и контакты (контактом считается нажатие на “Чат” или “Позвонить”) 14 августа 2023 года.*/
+WITH DAU AS (
+    SELECT COUNT(DISTINCT searcher_uid) AS DAU
+    FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+    WHERE DATE(event_ts) = '2023-08-14'
+),
+Contacts AS (
+    SELECT COUNT(*) AS contacts
+    FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+    WHERE DATE(event_ts) = '2023-08-14'
+    AND event_name = 'opened_chat' OR event_name = 'viewed_phone_num'
+)
+SELECT DAU, Contacts
+FROM DAU, Contacts;
+
+/* 2) Рассчитайте долю контактов, которые проходят через кнопку “Чат” и кнопку “Позвонить” за 14 августа 2023 года.*/
+--Рассчитываем общую долю контактов за день - 530,465
+
+SELECT COUNT(searcher_uid) AS All_users_during_theday 
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) = '2023-08-14'
+
+--Рассчитываем которые проходят через кнопку “Чат” и кнопку “Позвонить” - 12,360
+
+SELECT COUNT(searcher_uid) AS Users_using_chatorcall 
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) = '2023-08-14'
+    AND event_name IN ('opened_chat', 'viewed_phone_num');
+
+-- В тех задании нужно отобразить раздельно контакты для кнопок "чата" и "позвонить"
+--4134 для чата
+SELECT COUNT(searcher_uid) AS Users_using_chatorcall 
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) = '2023-08-14'
+    AND event_name ='opened_chat';
+-- 8226 для позвонить
+SELECT COUNT(searcher_uid) AS Users_using_chatorcall 
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) = '2023-08-14'
+    AND event_name = 'viewed_phone_num';
+
+--Итоговый запрос
+WITH DailyUsers AS (
+    SELECT 
+        COUNT(searcher_uid) AS All_users_during_theday,
+        COUNT(CASE WHEN event_name = 'opened_chat' THEN searcher_uid END) AS Users_using_chat,
+        COUNT(CASE WHEN event_name = 'viewed_phone_num' THEN searcher_uid END) AS Users_using_call
+    FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+    WHERE DATE(event_ts) = '2023-08-14'
+)
+
+SELECT 
+    (Users_using_chat + Users_using_call) / CAST(All_users_during_theday AS DECIMAL) AS Overall_user_ratio_using_chatandphone,
+    Users_using_chat/ CAST(All_users_during_theday AS DECIMAL) AS User_ratio_using_chat,
+    Users_using_call / CAST(All_users_during_theday AS DECIMAL) AS Sser_ratio_using_phone
+FROM DailyUsers;
+
+/*3) Посчитайте долю контактов за август, которые совершаются между пользователями из разных городов (то есть, город соискателя не совпадает с городом объявления).  */
+-- Рассчитать контакты за август, сгруппировав по дням,городу поиска, и города объявления
+
+SELECT DATE(event_ts) AS day, searcher_city_name, adv_city, COUNT(searcher_uid) AS Users
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+GROUP BY event_ts,searcher_city_name, adv_city, searcher_uid
+HAVING DATE(event_ts) BETWEEN '2023-08-01'AND '2023-08-31'
+ORDER BY event_ts ASC
+-- Сумма всех контактов по дням в августе
+SELECT DATE(event_ts) AS day,COUNT(searcher_uid) AS Users
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) BETWEEN '2023-08-01' AND '2023-08-31'
+GROUP BY day
+ORDER BY day ASC;
+--13,593,716 контактов
+SELECT COUNT( searcher_uid) AS Users
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+WHERE DATE(event_ts) BETWEEN '2023-08-01' AND '2023-08-31'
+
+--Как и верхний запрос. Прочел в описании что данные у нас ровно за Август
+SELECT COUNT(*) AS all_contacts
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+-- Рассчитать контакты за авугст, у которых не равные городу поиска и городу объявления = 8,822,679
+SELECT SUM(CASE WHEN searcher_city_name != adv_city THEN 1 ELSE 0 END) AS Users_Not_Match
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+
+--Итоговая формула
+SELECT SUM(not_match) / COUNT(*) AS Users_City_Not_Match
+FROM ( SELECT CASE 
+      WHEN ARRAY_LENGTH(SPLIT(searcher_city_name, '/')) < 3 THEN 1
+      WHEN SPLIT(searcher_city_name, '/')[OFFSET(2)] != adv_city THEN 1 
+      ELSE 0  END AS not_match
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`) subquery;
+
+/*4) Рассчитайте воронки из просмотра тизера в контакт через просмотр карточки объявления по категориям.
+💡 Обрати внимание:
+●	все шаги воронки внутри категории клиент должен пройти в один день,
+●	значение конверсии нужно округлить до десятых.
+●	воронку нужно рассчитать в пользователях*/
+
+--Final query
+WITH funnel_cte AS (
+  SELECT
+    DATE(event_ts) AS date,
+    cat_1_name,
+    searcher_uid,
+    COUNT(DISTINCT CASE WHEN event_name = 'viewed_listing' THEN DATE(event_ts) END) AS num_viewed_listing,
+    COUNT(DISTINCT CASE WHEN event_name = 'opened_advert_page' THEN DATE(event_ts) END) AS num_opened_advert_page,
+    COUNT(DISTINCT CASE WHEN event_name = 'viewed_phone_num' THEN DATE(event_ts) END) AS num_viewed_phone_num,
+    COUNT(DISTINCT CASE WHEN event_name = 'opened_chat' THEN DATE(event_ts) END) AS num_opened_chat
+  FROM
+    `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+  GROUP BY
+    date, cat_1_name, searcher_uid
+)
+SELECT
+  date,
+  cat_1_name,
+  ROUND(AVG(num_opened_advert_page / NULLIF(num_viewed_listing, 0)) * 100, 1) AS conv_viewed_listing_to_opened_advert_page,
+  ROUND(AVG(num_viewed_phone_num / NULLIF(num_opened_advert_page, 0)) * 100, 1) AS conv_opened_advert_page_to_viewed_phone_num,
+  ROUND(AVG(num_opened_chat / NULLIF(num_opened_advert_page, 0)) * 100, 1) AS conv_opened_advert_page_to_opened_chat
+FROM
+  funnel_cte
+GROUP BY
+  date, cat_1_name
+ORDER BY date ASC;
+
+/*5) Определите, какую категорию (Работа, Услуги и т.д.) чаще всего искали пользователи в августе. Для этого категорируйте запросы и отсортируйте категории по частотности*/
+-- Подтверждение и проверка по цифрам
+SELECT cat_1_name, COUNT (searcher_uid)
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+GROUP BY cat_1_name
+
+-- Final
+WITH categorized_queries AS (
+  SELECT
+    CASE 
+      WHEN cat_1_name = 'uslugi' THEN 'Услуги'
+      WHEN cat_1_name = 'lichnye-vezchi' THEN 'Личные вещи'
+      WHEN cat_1_name = 'rabota' THEN 'Работа'
+      WHEN cat_1_name = 'dom-dacha' THEN 'Дом и дача'
+      WHEN cat_1_name IS NULL THEN 'Неопределено'
+      WHEN cat_1_name = 'detyam' THEN 'Детям'
+      WHEN cat_1_name = 'elektronika' THEN 'Электроника'
+      WHEN cat_1_name = 'hobby-otdyh' THEN 'Хобби и отдых'
+      WHEN cat_1_name = 'zhivotnye' THEN 'Животные'
+      WHEN cat_1_name = 'biznes' THEN 'Бизнес'
+    END AS category
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`)
+
+SELECT category, COUNT(*) AS query_count
+FROM categorized_queries
+GROUP BY category
+ORDER BY query_count DESC;
+
+/*Тебе нужно принять решение о раскатке данного функционала по итогам А/Б-теста. Как ты считаешь, стоит ли нам его раскатить?
+Предлагаем при выполнении принять во внимание следующие пункты:
+1.	Увеличилась ли конверсия в тестовой ветке? Если да, то насколько?
+2.	Можем ли мы принять решение о раскатке на полученных данных? Хватает ли нам данных, чтобы заметить статистически значимые различия?
+3.	Отличаются ли результаты в зависимости от категорий? В какой категории самое высокое вовлечение?
+4.	Отличаются ли результаты в зависимости от наличия опыта прошлых покупок?
+5.	Есть ли дополнительные метрики, которые мы можем замерить и которые нам могут быть интересны при анализе итогов?
+ */
+--Тест для определения какие данные у нас имеются
+SELECT 
+  DATE(event_ts) AS event_date,
+  SUM(CASE WHEN fork = 'control' THEN 1 ELSE 0 END) AS fork_control,
+  SUM(CASE WHEN fork = 'test' THEN 1 ELSE 0 END) AS fork_test
+FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+GROUP BY event_date
+ORDER BY event_date ASC;
+
+--1.	Увеличилась ли конверсия в тестовой ветке? Если да, то насколько?
+-- 1) search_results таблице, ищу по  двум группам все запросы которые открывают карточку объявления
+-- 2) contact_actions таблице, считаю по двум группам доходимость до контакта
+-- 3) control_group таблице, суммирую доходимость до карточки и до контакта
+-- 4) test_group таблице, суммирую доходимость до карточки и до контакта
+-- 5) объеденяю данные и рассчитываю по каждой категории конверсию
+
+WITH search_results AS (
+  SELECT fork, searcher_uid,
+    DATE(event_ts) AS event_date,
+    COUNT(DISTINCT CASE WHEN event_name = 'opened_advert_page' THEN searcher_uid END) AS search_results_count
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+  WHERE DATE(event_ts) BETWEEN '2023-08-03' AND '2023-08-14'
+  GROUP BY fork, searcher_uid, event_date
+),
+
+contact_actions AS (
+  SELECT fork, searcher_uid,
+    COUNT(DISTINCT CASE WHEN event_name IN ('viewed_phone_num', 'opened_chat') THEN searcher_uid END) AS contact_actions_count
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+  WHERE event_name IN ('viewed_phone_num', 'opened_chat') AND DATE(event_ts) >= '2023-08-03' AND DATE(event_ts) <= '2023-08-14'
+  GROUP BY fork, searcher_uid
+),
+
+control_group AS (
+  SELECT  search_results.searcher_uid,
+    SUM(search_results_count) AS search_results_count,
+    SUM(contact_actions_count) AS contact_actions_count
+  FROM search_results
+  LEFT JOIN contact_actions ON search_results.searcher_uid = contact_actions.searcher_uid AND search_results.fork = contact_actions.fork
+  WHERE search_results.fork = 'control'
+  GROUP BY search_results.searcher_uid
+),
+
+test_group AS (
+  SELECT search_results.searcher_uid,
+    SUM(search_results_count) AS search_results_count,
+    SUM(contact_actions_count) AS contact_actions_count
+  FROM search_results
+  LEFT JOIN contact_actions ON search_results.searcher_uid = contact_actions.searcher_uid AND search_results.fork = contact_actions.fork
+  WHERE search_results.fork = 'test'
+  GROUP BY search_results.searcher_uid
+)
+
+SELECT 'control' AS group_name,
+  SUM(contact_actions_count) / NULLIF(SUM(search_results_count), 0) AS conversion_rate
+FROM control_group
+
+UNION ALL
+
+SELECT 'test' AS group_name,
+  SUM(contact_actions_count) / NULLIF(SUM(search_results_count), 0) AS conversion_rate
+FROM  test_group;
+-- Для определения категории
+WITH search_results AS (
+  SELECT fork, searcher_uid, cat_1_name,
+         DATE(event_ts) AS event_date,
+         COUNT(DISTINCT CASE WHEN event_name = 'opened_advert_page' THEN searcher_uid END) AS search_results_count
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+  WHERE DATE(event_ts) BETWEEN '2023-08-03' AND '2023-08-14'
+  GROUP BY fork, searcher_uid, event_date, cat_1_name
+),
+
+contact_actions AS (
+  SELECT fork, searcher_uid, cat_1_name,
+         COUNT(DISTINCT CASE WHEN event_name IN ('viewed_phone_num', 'opened_chat') THEN searcher_uid END) AS contact_actions_count
+  FROM `kaspi-mobile.T_KASPI_TEST_DATA.t_kaspi_test_data`
+  WHERE event_name IN ('viewed_phone_num', 'opened_chat') AND DATE(event_ts) BETWEEN '2023-08-03' AND '2023-08-14'
+  GROUP BY fork, searcher_uid, cat_1_name
+),
+
+control_group AS (
+  SELECT search_results.cat_1_name,
+         SUM(search_results_count) AS search_results_count,
+         SUM(contact_actions_count) AS contact_actions_count
+  FROM search_results
+  LEFT JOIN contact_actions USING (fork, searcher_uid, cat_1_name)
+  WHERE search_results.fork = 'control'
+  GROUP BY search_results.cat_1_name
+),
+
+test_group AS (
+  SELECT search_results.cat_1_name,
+         SUM(search_results_count) AS search_results_count,
+         SUM(contact_actions_count) AS contact_actions_count
+  FROM search_results
+  LEFT JOIN contact_actions USING (fork, searcher_uid, cat_1_name)
+  WHERE search_results.fork = 'test'
+  GROUP BY search_results.cat_1_name
+)
+
+SELECT 
+  'control' AS group_name,
+  control_group.cat_1_name,
+  SUM(control_group.contact_actions_count) / NULLIF(SUM(control_group.search_results_count), 0) AS conversion_rate
+FROM control_group
+GROUP BY control_group.cat_1_name
+
+UNION ALL
+
+SELECT
+  'test' AS group_name,
+  test_group.cat_1_name,
+  SUM(test_group.contact_actions_count) / NULLIF(SUM(test_group.search_results_count), 0) AS conversion_rate
+FROM test_group
+GROUP BY test_group.cat_1_name;
